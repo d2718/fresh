@@ -131,6 +131,10 @@ where
 fn main() -> Result<(), String> {
     let opts = Opts::parse();
 
+    if opts.extract {
+        return Err("non-replacement not yet supported".into());
+    }
+
     let mut input_stream: Box<dyn BufRead> = match &opts.input {
         Some(pbuf) => {
             let f = File::open(pbuf)
@@ -151,7 +155,7 @@ fn main() -> Result<(), String> {
 
     let repl: &str = &opts
         .replace
-        .ok_or_else(|| format!("non-replacement syntax not supported"))?;
+        .ok_or_else(|| format!("non-replacement not yet supported"))?;
 
     if opts.simple {
         static_replace(
