@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::PathBuf,
 };
 
@@ -245,9 +245,9 @@ fn main() -> Result<(), String> {
         Some(pbuf) => {
             let f = File::create(pbuf)
                 .map_err(|e| format!("unable to open output file {}: {}", pbuf.display(), &e))?;
-            Box::new(f)
+            Box::new(BufWriter::new(f))
         }
-        None => Box::new(std::io::stdout().lock()),
+        None => Box::new(BufWriter::new(std::io::stdout().lock())),
     };
 
     let repl: &str = &opts
@@ -262,7 +262,7 @@ fn main() -> Result<(), String> {
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
-            )
+            )?;
         } else {
             static_replace(
                 &opts.pattern,
@@ -270,7 +270,7 @@ fn main() -> Result<(), String> {
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
-            )
+            )?;
         }
     } else {
         if opts.extract {
@@ -280,7 +280,7 @@ fn main() -> Result<(), String> {
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
-            )
+            )?;
         } else {
             regex_replace(
                 &opts.pattern,
@@ -288,7 +288,13 @@ fn main() -> Result<(), String> {
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
-            )
+            )?;
         }
     }
+
+    output_stream
+        .flush()
+        .map_err(|e| format!("error flushing output stream: {}", &e))?;
+
+    Ok(())
 }
