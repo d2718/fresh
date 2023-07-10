@@ -65,7 +65,7 @@ where
         };
 
         outstream
-            .write(&altered.as_bytes())
+            .write(altered.as_bytes())
             .map_err(|e| format!("error writing to output stream: {}", &e))?;
         buff.clear();
     }
@@ -99,7 +99,7 @@ where
                         .write(chunk.as_bytes())
                         .map_err(|e| format!("error writing to output stream: {}", &e))?;
                 }
-                while let Some(chunk) = splitter.next() {
+                for chunk in splitter {
                     outstream
                         .write(repl.as_bytes())
                         .map_err(|e| format!("error writing to output stream: {}", &e))?;
@@ -115,7 +115,7 @@ where
                         .write(chunk.as_bytes())
                         .map_err(|e| format!("error writing to output stream: {}", &e))?;
                 }
-                while let Some(chunk) = splitter.next() {
+                for chunk in splitter {
                     outstream
                         .write(repl.as_bytes())
                         .map_err(|e| format!("error writing to output stream: {}", &e))?;
@@ -128,12 +128,109 @@ where
     }
 }
 
+fn regex_extract<B, W>(
+    patt: &str,
+    repl: Option<&str>,
+    mut instream: B,
+    mut outstream: W,
+    n_rep: Option<usize>,
+) -> Result<(), String>
+where
+    B: BufRead,
+    W: Write,
+{
+    let re = Regex::new(patt).map_err(|e| format!("invalid regex pattern \"{}\": {}", patt, &e))?;
+
+    let mut buff = String::new();
+    loop {
+        let n = instream
+            .read_line(&mut buff)
+            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        if n == 0 {
+            return Ok(());
+        }
+
+        let mut n = 0;
+        let mut cap_idx = 0;
+        let mut matched = false;
+        while let Some(m) = re.find_at(&buff, cap_idx) {
+            if let Some(n_rep) = n_rep {
+                if n >= n_rep {
+                    break;
+                }
+            }
+            if let Some(repl) = repl {
+                let altered = re.replace(&buff[m.start()..m.end()], repl);
+                outstream
+                    .write(altered.as_bytes())
+                    .map_err(|e| format!("error writing to output stream: {}", &e))?;
+            } else {
+                outstream
+                    .write(m.as_str().as_bytes())
+                    .map_err(|e| format!("error writing to output stream: {}", &e))?;
+            }
+            matched = true;
+            cap_idx = m.end();
+            n += 1;
+        }
+        if matched {
+            outstream
+                .write("\n".as_bytes())
+                .map_err(|e| format!("error writing to output stream: {}", &e))?;
+        }
+
+        buff.clear();
+    }
+}
+
+fn static_extract<B, W>(
+    patt: &str,
+    repl: Option<&str>,
+    mut instream: B,
+    mut outstream: W,
+    n_rep: Option<usize>,
+) -> Result<(), String>
+where
+    B: BufRead,
+    W: Write,
+{
+    let mut buff = String::new();
+    loop {
+        let n = instream
+            .read_line(&mut buff)
+            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        if n == 0 {
+            return Ok(());
+        }
+
+        let mut matched = false;
+        for (n, _) in buff.matches(patt).enumerate() {
+            if let Some(n_rep) = n_rep {
+                if n >= n_rep {
+                    break;
+                }
+            }
+            let chunk = match repl {
+                Some(repl) => repl,
+                None => patt,
+            };
+            outstream
+                .write(chunk.as_bytes())
+                .map_err(|e| format!("error writing to output stream: {}", &e))?;
+            matched = true;
+        }
+        if matched {
+            outstream
+                .write("\n".as_bytes())
+                .map_err(|e| format!("error writing to output stream :{}", &e))?;
+        }
+
+        buff.clear();
+    }
+}
+
 fn main() -> Result<(), String> {
     let opts = Opts::parse();
-
-    if opts.extract {
-        return Err("non-replacement not yet supported".into());
-    }
 
     let mut input_stream: Box<dyn BufRead> = match &opts.input {
         Some(pbuf) => {
@@ -155,23 +252,43 @@ fn main() -> Result<(), String> {
 
     let repl: &str = &opts
         .replace
-        .ok_or_else(|| format!("non-replacement not yet supported"))?;
+        .ok_or_else(|| "non-replacement not yet supported".to_string())?;
 
     if opts.simple {
-        static_replace(
-            &opts.pattern,
-            repl,
-            &mut input_stream,
-            &mut output_stream,
-            opts.number,
-        )
+        if opts.extract {
+            static_extract(
+                &opts.pattern,
+                Some(repl),
+                &mut input_stream,
+                &mut output_stream,
+                opts.number,
+            )
+        } else {
+            static_replace(
+                &opts.pattern,
+                repl,
+                &mut input_stream,
+                &mut output_stream,
+                opts.number,
+            )
+        }
     } else {
-        regex_replace(
-            &opts.pattern,
-            repl,
-            &mut input_stream,
-            &mut output_stream,
-            opts.number,
-        )
+        if opts.extract {
+            regex_extract(
+                &opts.pattern,
+                Some(repl),
+                &mut input_stream,
+                &mut output_stream,
+                opts.number,
+            )
+        } else {
+            regex_replace(
+                &opts.pattern,
+                repl,
+                &mut input_stream,
+                &mut output_stream,
+                opts.number,
+            )
+        }
     }
 }

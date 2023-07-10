@@ -56,3 +56,10 @@ Limit the number of replacements with `-n`.
 $ echo "lorem ipsum dolor sit amet..." | fresh -n 3 '([aeiou])([mt])' '$1.$2'
 lore.m ipsu.m dolor si.t amet...
 ```
+
+To print only the matched text (or its replacement), use `-x`.
+
+```text
+echo "lorem ipsum dolor sit amet..." | fresh -x '[aeiou]' '$0'
+oeiuooiae
+````
