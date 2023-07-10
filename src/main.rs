@@ -37,6 +37,12 @@ struct Opts {
     output: Option<PathBuf>,
 }
 
+/**
+Read input stream line-by-line, replacing occurrences of `patt` with `repl`,
+according to the semantics of the
+[`Regex::replace*`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace)
+family of functions.
+*/
 fn regex_replace<B, W>(
     patt: &str,
     repl: &str,
@@ -71,6 +77,10 @@ where
     }
 }
 
+/**
+Read the input stream line-by-line, replacing all instances of `patt` with
+`repl`. This is straight string matching, unlike `regex_replace()`.
+*/
 fn static_replace<B, W>(
     patt: &str,
     repl: &str,
@@ -128,6 +138,12 @@ where
     }
 }
 
+/**
+Searches through the input stream line-by-line, printing _only_ occurrences
+of the matcing pattern (possibly modified by the `repl`) argument, if not
+`None`. Like `regex_replace()`, this modification is per the function of
+`Regex::replace`.
+*/
 fn regex_extract<B, W>(
     patt: &str,
     repl: Option<&str>,
@@ -183,6 +199,11 @@ where
     }
 }
 
+/**
+Search through the input line-by-line, printing _only_ the occurrences of
+`patt` (or, if `repl` is not `None`, prints `repl` for every occurrence
+of `patt`). This is static string matching, not regex matching.
+*/
 fn static_extract<B, W>(
     patt: &str,
     repl: Option<&str>,
@@ -250,33 +271,31 @@ fn main() -> Result<(), String> {
         None => Box::new(BufWriter::new(std::io::stdout().lock())),
     };
 
-    let repl: &str = &opts
-        .replace
-        .ok_or_else(|| "non-replacement not yet supported".to_string())?;
-
-    if opts.simple {
-        if opts.extract {
+    if opts.replace.is_none() || opts.extract {
+        if opts.simple {
             static_extract(
                 &opts.pattern,
-                Some(repl),
+                opts.replace.as_deref(),
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
             )?;
         } else {
-            static_replace(
+            regex_extract(
                 &opts.pattern,
-                repl,
+                opts.replace.as_deref(),
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
             )?;
         }
     } else {
-        if opts.extract {
-            regex_extract(
+        // Guaranteed by if clause to not be None.
+        let repl = opts.replace.unwrap();
+        if opts.simple {
+            static_replace(
                 &opts.pattern,
-                Some(repl),
+                &repl,
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,
@@ -284,7 +303,7 @@ fn main() -> Result<(), String> {
         } else {
             regex_replace(
                 &opts.pattern,
-                repl,
+                &repl,
                 &mut input_stream,
                 &mut output_stream,
                 opts.number,

@@ -18,8 +18,11 @@ Options:
   -V, --version          Print version
 ```
 
-`fresh` is still a work in progress. No thoughts have yet been given to
-performance.
+## Installation
+
+It should just `cargo build --release`.
+
+## Use
 
 By default, `fresh` reads from stdin, writes to stdout, and replaces occurrences
 of its first argument with its second argument.
@@ -29,7 +32,7 @@ $ echo "lorem ipsum dolor sit amet..." | fresh 'o' '0'
 l0rem ipsum d0l0r sit amet...
 ````
 
-Again, by default, the first argument is interpreted as a regex.
+By default, the first argument is interpreted as a regex.
 
 ```text
 $ echo "lorem ipsum dolor sit amet..." | fresh '[aeiou]' '*'
@@ -39,7 +42,7 @@ The `${N}` notation in the second argument will substitute in the Nth
 capture group from the first argument.
 
 ```text
-$ echo "lorem ipsum dolor sit amet..." | fresh '([aeiou])([mt])' '$1.$2'
+$ echo "lorem ipsum dolor sit amet..." | fresh '([aeiou])([mt])' '${1}.${2}'
 lore.m ipsu.m dolor si.t a.me.t...
 ```
 
@@ -62,4 +65,28 @@ To print only the matched text (or its replacement), use `-x`.
 ```text
 echo "lorem ipsum dolor sit amet..." | fresh -x '[aeiou]' '$0'
 oeiuooiae
-````
+```
+
+Omitting the replacement argument makes `fresh` behave like either
+`fresh -x PATTERN '$0'` or `fresh -s -x PATTERN PATTERN`.
+
+```text
+$ echo "lorem ipsum dolor sit amet..." | fresh '[aeiou]'
+oeiuooiae
+$ echo "lorem ipsum dolor sit amet..." | fresh -s 'o'
+ooo
+```
+  
+## &c.
+
+`fresh` is still a work in progress. The goal is to be a friendlier
+approximation of the venerable
+[`sed`](https://www.gnu.org/software/sed/manual/sed.html) utility.
+It is not intended to be a feature-complete copy; it is intended to make
+performing a regex find/replace on a stream of text simpler. Any other
+features are essentially incidental.  Features in pursuit of that goal
+will generally reflect the features of Rust's
+[`regex` crate](https://docs.rs/regex/latest/regex/).
+
+No real thought has been given to performance; this will probably
+change incrementally.
