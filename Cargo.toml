@@ -1,6 +1,6 @@
 [package]
 name = "fresh"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 rust-version = "1.60.0" #req'd by the regex crate
 authors = ["Dan (d2718) <d2718@gmail.com>"]
@@ -12,3 +12,8 @@ description = "A friendlier sed replacement."
 [dependencies]
 clap = { version = "^4.3", features = ["derive"] }
 regex = "^1.9"
+
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1

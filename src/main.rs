@@ -135,6 +135,7 @@ where
                 }
             }
         }
+        buff.clear();
     }
 }
 
