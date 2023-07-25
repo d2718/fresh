@@ -1,15 +1,22 @@
 mod err;
 
 use std::{
+    borrow::Cow,
     fs::File,
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufWriter, Read, Write},
     path::PathBuf,
 };
 
 use clap::Parser;
-use regex::Regex;
+use regex::bytes::Regex;
+use regex_chunker::ByteChunker;
 
 use err::FrErr;
+
+#[cfg(not(windows))]
+static NEWLINE: &[u8] = b"\n";
+#[cfg(windows)]
+static NEWLINE: &[u8] = b"\r\n";
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -22,7 +29,7 @@ struct Opts {
 
     /// Maximum number of replacements per line (default is all).
     #[arg(short, long, value_name = "N")]
-    number: Option<usize>,
+    max: Option<usize>,
 
     /// Print only found pattern (default is print everything).
     #[arg(short = 'x', long = "extract")]
@@ -31,6 +38,11 @@ struct Opts {
     /// Do simple verbating string matching (default is regex matching).
     #[arg(short, long)]
     simple: bool,
+
+    /// Delimiter to separate "lines".
+    #[arg(short, long, value_name = "PATT",
+        default_value_t = String::from(r#"\r?\n"#))]
+    delimiter: String,
 
     /// Input file (default is stdin).
     #[arg(short, long)]
@@ -41,88 +53,112 @@ struct Opts {
     output: Option<PathBuf>,
 }
 
+fn find_subslice<T>(haystack: &[T], needle: &[T]) -> Option<usize>
+where
+    T: PartialEq
+{
+    if needle.len() > haystack.len() {
+        return None;
+    }
+
+    for (n, w) in haystack.windows(needle.len()).enumerate() {
+        if w == needle {
+            return Some(n);
+        }
+    }
+
+    None
+}
+
 /**
 Read input stream line-by-line, replacing occurrences of `patt` with `repl`,
 according to the semantics of the
 [`Regex::replace*`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace)
 family of functions.
 */
-fn regex_replace<B, W>(
+fn regex_replace<R, W>(
     patt: &str,
     repl: &str,
-    mut instream: B,
+    delim: &str,
+    instream: R,
     mut outstream: W,
     n_rep: Option<usize>,
 ) -> Result<(), FrErr>
 where
-    B: BufRead,
+    R: Read,
     W: Write,
 {
     let re = Regex::new(patt)?;
+    let chunker = ByteChunker::new(instream, delim)?;
+    let repl = repl.as_bytes();
 
-    let mut buff = String::new();
-    loop {
-        let n = instream.read_line(&mut buff)?;
-        if n == 0 {
-            return Ok(());
-        }
-
+    for chunk in chunker {
+        let chunk = chunk?;
         let altered = match n_rep {
-            Some(n) => re.replacen(&buff, n, repl),
-            None => re.replace_all(&buff, repl),
+            Some(n) => re.replacen(&chunk, n, repl),
+            None => re.replace_all(&chunk, repl),
         };
 
-        outstream.write(altered.as_bytes())?;
-        buff.clear();
+        match altered {
+            Cow::Owned(mut v) => {
+                v.extend_from_slice(NEWLINE);
+                outstream.write(&v)?;
+            },
+            Cow::Borrowed(b) => {
+                outstream.write(b)?;
+                outstream.write(NEWLINE)?;
+            }
+        }
     }
+
+    Ok(())
 }
 
 /**
 Read the input stream line-by-line, replacing all instances of `patt` with
 `repl`. This is straight string matching, unlike `regex_replace()`.
 */
-fn static_replace<B, W>(
+fn static_replace<R, W>(
     patt: &str,
     repl: &str,
-    mut instream: B,
+    delim: &str,
+    instream: R,
     mut outstream: W,
     n_rep: Option<usize>,
 ) -> Result<(), FrErr>
 where
-    B: BufRead,
+    R: Read,
     W: Write,
 {
-    let mut buff = String::new();
-    loop {
-        let n = instream.read_line(&mut buff)?;
-        if n == 0 {
-            return Ok(());
+    let patt = patt.as_bytes();
+    let repl = repl.as_bytes();
+    let chunker = ByteChunker::new(instream, delim)?;
+    let n_rep = n_rep.unwrap_or(usize::MAX);
+
+    for chunk in chunker {
+        let chunk = chunk?;
+        let mut subslice = &chunk[..];
+        let mut n_replaced: usize = 0;
+
+        while n_replaced < n_rep {
+            if let Some(n) = find_subslice(subslice, patt) {
+                outstream.write_all(&subslice[..n])?;
+                outstream.write_all(repl)?;
+                n_replaced += 1;
+                let offs = n + patt.len();
+                subslice = &subslice[offs..];
+            } else {
+                break;
+            }
         }
 
-        match n_rep {
-            Some(n) => {
-                let mut splitter = buff.splitn(n, patt);
-                if let Some(chunk) = splitter.next() {
-                    outstream.write(chunk.as_bytes())?;
-                }
-                for chunk in splitter {
-                    outstream.write(repl.as_bytes())?;
-                    outstream.write(chunk.as_bytes())?;
-                }
-            }
-            None => {
-                let mut splitter = buff.split(patt);
-                if let Some(chunk) = splitter.next() {
-                    outstream.write(chunk.as_bytes())?;
-                }
-                for chunk in splitter {
-                    outstream.write(repl.as_bytes())?;
-                    outstream.write(chunk.as_bytes())?;
-                }
-            }
+        if !subslice.is_empty() {
+            outstream.write_all(subslice)?;
+            outstream.write_all(NEWLINE)?;
         }
-        buff.clear();
     }
+
+    Ok(())
 }
 
 /**
@@ -131,51 +167,44 @@ of the matcing pattern (possibly modified by the `repl`) argument, if not
 `None`. Like `regex_replace()`, this modification is per the function of
 `Regex::replace`.
 */
-fn regex_extract<B, W>(
+fn regex_extract<R, W>(
     patt: &str,
     repl: Option<&str>,
-    mut instream: B,
+    delim: &str,
+    instream: R,
     mut outstream: W,
     n_rep: Option<usize>,
 ) -> Result<(), FrErr>
 where
-    B: BufRead,
+    R: Read,
     W: Write,
 {
     let re = Regex::new(patt)?;
+    let chunker = ByteChunker::new(instream, delim)?;
+    let n_rep = n_rep.unwrap_or(usize::MAX);
 
-    let mut buff = String::new();
-    loop {
-        let n = instream.read_line(&mut buff)?;
-        if n == 0 {
-            return Ok(());
-        }
+    let mut buff = Vec::new();
+    for chunk in chunker {
+        let chunk = chunk?;
 
-        let mut n = 0;
-        let mut cap_idx = 0;
-        let mut matched = false;
-        while let Some(m) = re.find_at(&buff, cap_idx) {
-            if let Some(n_rep) = n_rep {
-                if n >= n_rep {
-                    break;
-                }
+        if let Some(repl) = repl {
+            for cap in re.captures_iter(&chunk).take(n_rep) {
+                cap.expand(repl.as_bytes(), &mut buff);
             }
-            if let Some(repl) = repl {
-                let altered = re.replace(&buff[m.start()..m.end()], repl);
-                outstream.write(altered.as_bytes())?;
-            } else {
-                outstream.write(m.as_str().as_bytes())?;
+        } else {
+            for m in re.find_iter(&chunk).take(n_rep) {
+                buff.extend_from_slice(&chunk[m.range()]);
             }
-            matched = true;
-            cap_idx = m.end();
-            n += 1;
-        }
-        if matched {
-            outstream.write("\n".as_bytes())?;
         }
 
-        buff.clear();
+        if !buff.is_empty() {
+            buff.extend_from_slice(NEWLINE);
+            outstream.write_all(&buff)?;
+            buff.clear();
+        }
     }
+
+    Ok(())
 }
 
 /**
@@ -183,54 +212,55 @@ Search through the input line-by-line, printing _only_ the occurrences of
 `patt` (or, if `repl` is not `None`, prints `repl` for every occurrence
 of `patt`). This is static string matching, not regex matching.
 */
-fn static_extract<B, W>(
+fn static_extract<R, W>(
     patt: &str,
     repl: Option<&str>,
-    mut instream: B,
+    delim: &str,
+    instream: R,
     mut outstream: W,
     n_rep: Option<usize>,
 ) -> Result<(), FrErr>
 where
-    B: BufRead,
+    R: Read,
     W: Write,
 {
-    let mut buff = String::new();
-    loop {
-        let n = instream.read_line(&mut buff)?;
-        if n == 0 {
-            return Ok(());
-        }
+    let patt = patt.as_bytes();
+    let repl = repl.map(|x| x.as_bytes()).unwrap_or(patt);
+    let chunker = ByteChunker::new(instream, delim)?;
+    let n_rep = n_rep.unwrap_or(usize::MAX);
+    let mut buff: Vec<u8> = Vec::new();
 
-        let mut matched = false;
-        for (n, _) in buff.matches(patt).enumerate() {
-            if let Some(n_rep) = n_rep {
-                if n >= n_rep {
-                    break;
-                }
+    for chunk in chunker {
+        let chunk = chunk?;
+        let mut subslice = &chunk[..];
+        let mut n_replaced: usize = 0;
+
+        while n_replaced < n_rep {
+            if let Some(n) = find_subslice(subslice, patt) {
+                buff.extend_from_slice(repl);
+                n_replaced += 1;
+                let offs = n + repl.len();
+                subslice = &subslice[offs..];
+            } else {
+                break;
             }
-            let chunk = match repl {
-                Some(repl) => repl,
-                None => patt,
-            };
-            outstream.write(chunk.as_bytes())?;
-            matched = true;
-        }
-        if matched {
-            outstream.write("\n".as_bytes())?;
         }
 
-        buff.clear();
+        if !buff.is_empty() {
+            buff.extend_from_slice(NEWLINE);
+            outstream.write_all(&buff)?;
+            buff.clear();
+        }
     }
+
+    Ok(())
 }
 
 fn main() -> Result<(), FrErr> {
     let opts = Opts::parse();
 
-    let mut input_stream: Box<dyn BufRead> = match &opts.input {
-        Some(pbuf) => {
-            let f = File::open(pbuf)?;
-            Box::new(BufReader::new(f))
-        }
+    let mut input_stream: Box<dyn Read> = match &opts.input {
+        Some(pbuf) => Box::new(File::open(pbuf)?),
         None => Box::new(std::io::stdin().lock()),
     };
 
@@ -247,17 +277,19 @@ fn main() -> Result<(), FrErr> {
             static_extract(
                 &opts.pattern,
                 opts.replace.as_deref(),
+                &opts.delimiter,
                 &mut input_stream,
                 &mut output_stream,
-                opts.number,
+                opts.max,
             )?;
         } else {
             regex_extract(
                 &opts.pattern,
                 opts.replace.as_deref(),
+                &opts.delimiter,
                 &mut input_stream,
                 &mut output_stream,
-                opts.number,
+                opts.max,
             )?;
         }
     } else {
@@ -267,17 +299,19 @@ fn main() -> Result<(), FrErr> {
             static_replace(
                 &opts.pattern,
                 &repl,
+                &opts.delimiter,
                 &mut input_stream,
                 &mut output_stream,
-                opts.number,
+                opts.max,
             )?;
         } else {
             regex_replace(
                 &opts.pattern,
                 &repl,
+                &opts.delimiter,
                 &mut input_stream,
                 &mut output_stream,
-                opts.number,
+                opts.max,
             )?;
         }
     }

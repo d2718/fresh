@@ -1,7 +1,8 @@
 # fresh
-A friendlier sed-like utility.
 
 ```text
+A friendlier sed replacement.
+
 Usage: fresh [OPTIONS] <PATTERN> [REPLACE]
 
 Arguments:
@@ -9,13 +10,14 @@ Arguments:
   [REPLACE]  Optional replacement
 
 Options:
-  -n, --number <N>       Maximum number of replacements per line (default is all)
-  -x, --extract          Print only found pattern (default is print everything)
-  -s, --simple           Do simple verbating string matching (default is regex matching)
-  -i, --input <INPUT>    Input file (default is stdin)
-  -o, --output <OUTPUT>  Output file (default is stdout)
-  -h, --help             Print help
-  -V, --version          Print version
+  -m, --max <N>           Maximum number of replacements per line (default is all)
+  -x, --extract           Print only found pattern (default is print everything)
+  -s, --simple            Do simple verbating string matching (default is regex matching)
+  -d, --delimiter <PATT>  Delimiter to separate "lines" [default: \r?\n]
+  -i, --input <INPUT>     Input file (default is stdin)
+  -o, --output <OUTPUT>   Output file (default is stdout)
+  -h, --help              Print help
+  -V, --version           Print version
 ```
 
 ## Installation
@@ -53,10 +55,10 @@ echo "lorem ipsum dolor sit amet..." | fresh -s '.' '?'
 lorem ipsum dolor sit amet???
 ```
 
-Limit the number of replacements with `-n`.
+Limit the number of replacements with `-m`.
 
 ```text
-$ echo "lorem ipsum dolor sit amet..." | fresh -n 3 '([aeiou])([mt])' '$1.$2'
+$ echo "lorem ipsum dolor sit amet..." | fresh -m 3 '([aeiou])([mt])' '$1.$2'
 lore.m ipsu.m dolor si.t amet...
 ```
 
