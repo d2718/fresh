@@ -1,3 +1,5 @@
+mod err;
+
 use std::{
     fs::File,
     io::{BufRead, BufReader, BufWriter, Write},
@@ -6,6 +8,8 @@ use std::{
 
 use clap::Parser;
 use regex::Regex;
+
+use err::FrErr;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -49,18 +53,16 @@ fn regex_replace<B, W>(
     mut instream: B,
     mut outstream: W,
     n_rep: Option<usize>,
-) -> Result<(), String>
+) -> Result<(), FrErr>
 where
     B: BufRead,
     W: Write,
 {
-    let re = Regex::new(patt).map_err(|e| format!("invalid regex pattern \"{}\": {}", patt, &e))?;
+    let re = Regex::new(patt)?;
 
     let mut buff = String::new();
     loop {
-        let n = instream
-            .read_line(&mut buff)
-            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        let n = instream.read_line(&mut buff)?;
         if n == 0 {
             return Ok(());
         }
@@ -70,9 +72,7 @@ where
             None => re.replace_all(&buff, repl),
         };
 
-        outstream
-            .write(altered.as_bytes())
-            .map_err(|e| format!("error writing to output stream: {}", &e))?;
+        outstream.write(altered.as_bytes())?;
         buff.clear();
     }
 }
@@ -87,16 +87,14 @@ fn static_replace<B, W>(
     mut instream: B,
     mut outstream: W,
     n_rep: Option<usize>,
-) -> Result<(), String>
+) -> Result<(), FrErr>
 where
     B: BufRead,
     W: Write,
 {
     let mut buff = String::new();
     loop {
-        let n = instream
-            .read_line(&mut buff)
-            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        let n = instream.read_line(&mut buff)?;
         if n == 0 {
             return Ok(());
         }
@@ -105,33 +103,21 @@ where
             Some(n) => {
                 let mut splitter = buff.splitn(n, patt);
                 if let Some(chunk) = splitter.next() {
-                    outstream
-                        .write(chunk.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                    outstream.write(chunk.as_bytes())?;
                 }
                 for chunk in splitter {
-                    outstream
-                        .write(repl.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
-                    outstream
-                        .write(chunk.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                    outstream.write(repl.as_bytes())?;
+                    outstream.write(chunk.as_bytes())?;
                 }
             }
             None => {
                 let mut splitter = buff.split(patt);
                 if let Some(chunk) = splitter.next() {
-                    outstream
-                        .write(chunk.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                    outstream.write(chunk.as_bytes())?;
                 }
                 for chunk in splitter {
-                    outstream
-                        .write(repl.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
-                    outstream
-                        .write(chunk.as_bytes())
-                        .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                    outstream.write(repl.as_bytes())?;
+                    outstream.write(chunk.as_bytes())?;
                 }
             }
         }
@@ -151,18 +137,16 @@ fn regex_extract<B, W>(
     mut instream: B,
     mut outstream: W,
     n_rep: Option<usize>,
-) -> Result<(), String>
+) -> Result<(), FrErr>
 where
     B: BufRead,
     W: Write,
 {
-    let re = Regex::new(patt).map_err(|e| format!("invalid regex pattern \"{}\": {}", patt, &e))?;
+    let re = Regex::new(patt)?;
 
     let mut buff = String::new();
     loop {
-        let n = instream
-            .read_line(&mut buff)
-            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        let n = instream.read_line(&mut buff)?;
         if n == 0 {
             return Ok(());
         }
@@ -178,22 +162,16 @@ where
             }
             if let Some(repl) = repl {
                 let altered = re.replace(&buff[m.start()..m.end()], repl);
-                outstream
-                    .write(altered.as_bytes())
-                    .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                outstream.write(altered.as_bytes())?;
             } else {
-                outstream
-                    .write(m.as_str().as_bytes())
-                    .map_err(|e| format!("error writing to output stream: {}", &e))?;
+                outstream.write(m.as_str().as_bytes())?;
             }
             matched = true;
             cap_idx = m.end();
             n += 1;
         }
         if matched {
-            outstream
-                .write("\n".as_bytes())
-                .map_err(|e| format!("error writing to output stream: {}", &e))?;
+            outstream.write("\n".as_bytes())?;
         }
 
         buff.clear();
@@ -211,16 +189,14 @@ fn static_extract<B, W>(
     mut instream: B,
     mut outstream: W,
     n_rep: Option<usize>,
-) -> Result<(), String>
+) -> Result<(), FrErr>
 where
     B: BufRead,
     W: Write,
 {
     let mut buff = String::new();
     loop {
-        let n = instream
-            .read_line(&mut buff)
-            .map_err(|e| format!("error reading from input stream: {}", &e))?;
+        let n = instream.read_line(&mut buff)?;
         if n == 0 {
             return Ok(());
         }
@@ -236,28 +212,23 @@ where
                 Some(repl) => repl,
                 None => patt,
             };
-            outstream
-                .write(chunk.as_bytes())
-                .map_err(|e| format!("error writing to output stream: {}", &e))?;
+            outstream.write(chunk.as_bytes())?;
             matched = true;
         }
         if matched {
-            outstream
-                .write("\n".as_bytes())
-                .map_err(|e| format!("error writing to output stream :{}", &e))?;
+            outstream.write("\n".as_bytes())?;
         }
 
         buff.clear();
     }
 }
 
-fn main() -> Result<(), String> {
+fn main() -> Result<(), FrErr> {
     let opts = Opts::parse();
 
     let mut input_stream: Box<dyn BufRead> = match &opts.input {
         Some(pbuf) => {
-            let f = File::open(pbuf)
-                .map_err(|e| format!("unable to open input file {}: {}", pbuf.display(), &e))?;
+            let f = File::open(pbuf)?;
             Box::new(BufReader::new(f))
         }
         None => Box::new(std::io::stdin().lock()),
@@ -265,8 +236,7 @@ fn main() -> Result<(), String> {
 
     let mut output_stream: Box<dyn Write> = match &opts.output {
         Some(pbuf) => {
-            let f = File::create(pbuf)
-                .map_err(|e| format!("unable to open output file {}: {}", pbuf.display(), &e))?;
+            let f = File::create(pbuf)?;
             Box::new(BufWriter::new(f))
         }
         None => Box::new(BufWriter::new(std::io::stdout().lock())),
@@ -312,9 +282,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    output_stream
-        .flush()
-        .map_err(|e| format!("error flushing output stream: {}", &e))?;
+    output_stream.flush()?;
 
     Ok(())
 }
