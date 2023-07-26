@@ -1,57 +1,22 @@
 mod err;
+mod opt;
 
 use std::{
     borrow::Cow,
     fs::File,
     io::{BufWriter, Read, Write},
-    path::PathBuf,
 };
 
-use clap::Parser;
 use regex::bytes::Regex;
 use regex_chunker::ByteChunker;
 
 use err::FrErr;
+use opt::{Opts, MatchMode, OutputMode};
 
 #[cfg(not(windows))]
 static NEWLINE: &[u8] = b"\n";
 #[cfg(windows)]
 static NEWLINE: &[u8] = b"\r\n";
-
-#[derive(Parser)]
-#[command(author, version, about)]
-struct Opts {
-    /// Pattern to find.
-    pattern: String,
-
-    /// Optional replacement.
-    replace: Option<String>,
-
-    /// Maximum number of replacements per line (default is all).
-    #[arg(short, long, value_name = "N")]
-    max: Option<usize>,
-
-    /// Print only found pattern (default is print everything).
-    #[arg(short = 'x', long = "extract")]
-    extract: bool,
-
-    /// Do simple verbating string matching (default is regex matching).
-    #[arg(short, long)]
-    simple: bool,
-
-    /// Delimiter to separate "lines".
-    #[arg(short, long, value_name = "PATT",
-        default_value_t = String::from(r#"\r?\n"#))]
-    delimiter: String,
-
-    /// Input file (default is stdin).
-    #[arg(short, long)]
-    input: Option<PathBuf>,
-
-    /// Output file (default is stdout).
-    #[arg(short, long)]
-    output: Option<PathBuf>,
-}
 
 fn find_subslice<T>(haystack: &[T], needle: &[T]) -> Option<usize>
 where
@@ -76,39 +41,29 @@ according to the semantics of the
 [`Regex::replace*`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.replace)
 family of functions.
 */
-fn regex_replace<R, W>(
-    patt: &str,
-    repl: &str,
-    delim: &str,
-    instream: R,
-    mut outstream: W,
-    n_rep: Option<usize>,
-) -> Result<(), FrErr>
-where
-    R: Read,
-    W: Write,
-{
-    let re = Regex::new(patt)?;
-    let chunker = ByteChunker::new(instream, delim)?;
-    let repl = repl.as_bytes();
+fn regex_replace(mut opts: Opts) -> Result<(), FrErr> {
+    let re = Regex::new(&opts.pattern)?;
+    let chunker = ByteChunker::new(opts.input, &opts.delimiter)?;
 
-    for chunk in chunker {
-        let chunk = chunk?;
-        let altered = match n_rep {
-            Some(n) => re.replacen(&chunk, n, repl),
-            None => re.replace_all(&chunk, repl),
-        };
+    if let Some(repl) = opts.replace {
+        let repl = repl.as_bytes();
+        for chunk in chunker {
+            let chunk = chunk?;
+            let altered = re.replacen(&chunk, opts.max, repl);
 
-        match altered {
-            Cow::Owned(mut v) => {
-                v.extend_from_slice(NEWLINE);
-                outstream.write(&v)?;
-            },
-            Cow::Borrowed(b) => {
-                outstream.write(b)?;
-                outstream.write(NEWLINE)?;
+            match altered {
+                Cow::Owned(mut v) => {
+                    v.extend_from_slice(NEWLINE);
+                    opts.output.write(&v)?;
+                },
+                Cow::Borrowed(b) => {
+                    opts.output.write(b)?;
+                    opts.output.write(NEWLINE)?;
+                }
             }
         }
+    } else {
+
     }
 
     Ok(())
@@ -257,7 +212,7 @@ where
 }
 
 fn main() -> Result<(), FrErr> {
-    let opts = Opts::parse();
+    let opts = Opts::new()?;
 
     let mut input_stream: Box<dyn Read> = match &opts.input {
         Some(pbuf) => Box::new(File::open(pbuf)?),
