@@ -9,11 +9,6 @@ use regex_chunker::ByteChunker;
 use err::FrErr;
 use opt::{MatchMode, Opts, OutputMode};
 
-#[cfg(not(windows))]
-static NEWLINE: &[u8] = b"\n";
-#[cfg(windows)]
-static NEWLINE: &[u8] = b"\r\n";
-
 fn find_subslice<T>(haystack: &[T], needle: &[T]) -> Option<usize>
 where
     T: PartialEq,
@@ -50,15 +45,15 @@ fn regex_match(mut opts: Opts) -> Result<(), FrErr> {
 
                 match altered {
                     Cow::Owned(mut v) => {
-                        if opts.newlines {
-                            v.extend_from_slice(NEWLINE);
+                        if let Some(ref nl_bytes) = opts.newline {
+                            v.extend_from_slice(nl_bytes);
                         }
                         opts.output.write_all(&v)?;
                     }
                     Cow::Borrowed(b) => {
                         opts.output.write_all(b)?;
-                        if opts.newlines {
-                            opts.output.write_all(NEWLINE)?;
+                        if let Some(ref nl_bytes) = opts.newline {
+                            opts.output.write_all(nl_bytes)?;
                         }
                     }
                 }
@@ -75,8 +70,8 @@ fn regex_match(mut opts: Opts) -> Result<(), FrErr> {
                 }
 
                 if !buff.is_empty() {
-                    if opts.newlines {
-                        buff.extend_from_slice(NEWLINE);
+                    if let Some(ref nl_bytes) = opts.newline {
+                        buff.extend_from_slice(nl_bytes);
                     }
                     opts.output.write_all(&buff)?;
                     buff.clear();
@@ -122,8 +117,8 @@ fn static_match(mut opts: Opts) -> Result<(), FrErr> {
                 if !subslice.is_empty() {
                     buff.extend_from_slice(subslice)
                 }
-                if opts.newlines {
-                    buff.extend_from_slice(NEWLINE);
+                if let Some(ref nl_bytes) = opts.newline {
+                    buff.extend_from_slice(nl_bytes);
                 }
                 opts.output.write_all(&buff)?;
                 buff.clear();
@@ -148,8 +143,8 @@ fn static_match(mut opts: Opts) -> Result<(), FrErr> {
                 }
 
                 if !buff.is_empty() {
-                    if opts.newlines {
-                        buff.extend_from_slice(NEWLINE);
+                    if let Some(ref nl_bytes) = opts.newline {
+                        buff.extend_from_slice(nl_bytes);
                     }
                     opts.output.write_all(&buff)?;
                     buff.clear();

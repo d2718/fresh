@@ -11,6 +11,11 @@ use clap::Parser;
 
 use crate::FrErr;
 
+#[cfg(not(windows))]
+static NEWLINE: &str = "\n";
+#[cfg(windows)]
+static NEWLINE: &str = "\r\n";
+
 static DEFAULT_REGEX_EXTRACT: &str = "$0";
 
 #[derive(Clone, Debug)]
@@ -25,7 +30,7 @@ pub enum MatchMode {
     Verbatim,
 }
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(author, version, about)]
 struct CliOpts {
     /// Pattern to find.
@@ -51,9 +56,9 @@ struct CliOpts {
         default_value_t = String::from(r#"\r?\n"#))]
     delimiter: String,
 
-    /// Suppress the printing of newlines between chunks.
-    #[arg(short, long)]
-    no_newlines: bool,
+    /// Print something other than a newline between chunks.
+    #[arg(short, long, value_name = "NL")]
+    newline: Option<Option<String>>,
 
     /// Input file (default is stdin).
     #[arg(short, long)]
@@ -70,7 +75,7 @@ pub struct Opts {
     pub output_mode: OutputMode,
     pub match_mode: MatchMode,
     pub delimiter: String,
-    pub newlines: bool,
+    pub newline: Option<Vec<u8>>,
     pub input: Box<dyn Read>,
     pub output: Box<dyn Write>,
 }
@@ -78,6 +83,8 @@ pub struct Opts {
 impl Opts {
     pub fn new() -> Result<Self, FrErr> {
         let clio = CliOpts::parse();
+
+        println!("{:#?}", &clio);
 
         let max = clio.max.unwrap_or(usize::MAX);
 
@@ -107,11 +114,21 @@ impl Opts {
             Some(pbuf) => Box::new(File::create(pbuf)?),
             None => Box::new(std::io::stdout().lock()),
         };
+        let newline = match clio.newline {
+            // If the argument is absent, just use a newline sequence.
+            None => Some(Vec::from(NEWLINE)),
+            // If the argument is present but has no value, make it none.
+            Some(None) => None,
+            // If the argument is present and has a value, use that.
+            Some(Some(s)) => Some(Vec::from(s)),
+        };
+
+        println!("{:?}", &newline);
 
         Ok(Opts {
             pattern: clio.pattern,
             delimiter: clio.delimiter,
-            newlines: !clio.no_newlines,
+            newline,
             max,
             output_mode,
             match_mode,

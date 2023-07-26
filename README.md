@@ -14,7 +14,7 @@ Options:
   -x, --extract           Print only found pattern (default is print everything)
   -s, --simple            Do simple verbatim string matching (default is regex matching)
   -d, --delimiter <PATT>  Delimiter to separate "lines" [default: \r?\n]
-  -n, --no-newlines       Suppress the printing of newlines between chunks
+  -n, --newline [<NL>]    Print something other than a newline between chunks
   -i, --input <INPUT>     Input file (default is stdin)
   -o, --output <OUTPUT>   Output file (default is stdout)
   -h, --help              Print help
