@@ -12,8 +12,9 @@ Arguments:
 Options:
   -m, --max <N>           Maximum number of replacements per line (default is all)
   -x, --extract           Print only found pattern (default is print everything)
-  -s, --simple            Do simple verbating string matching (default is regex matching)
+  -s, --simple            Do simple verbatim string matching (default is regex matching)
   -d, --delimiter <PATT>  Delimiter to separate "lines" [default: \r?\n]
+  -n, --no-newlines       Suppress the printing of newlines between chunks
   -i, --input <INPUT>     Input file (default is stdin)
   -o, --output <OUTPUT>   Output file (default is stdout)
   -h, --help              Print help

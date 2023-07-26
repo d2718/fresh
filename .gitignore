@@ -13,10 +13,9 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-
 # Added by cargo
 
 /target
 
-# Ignore my personal install script.
-install.sh
+# This shouldn't even end up here in the first place.
+.vscode

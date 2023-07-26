@@ -51,6 +51,10 @@ struct CliOpts {
         default_value_t = String::from(r#"\r?\n"#))]
     delimiter: String,
 
+    /// Suppress the printing of newlines between chunks.
+    #[arg(short, long)]
+    no_newlines: bool,
+
     /// Input file (default is stdin).
     #[arg(short, long)]
     input: Option<PathBuf>,
@@ -66,6 +70,7 @@ pub struct Opts {
     pub output_mode: OutputMode,
     pub match_mode: MatchMode,
     pub delimiter: String,
+    pub newlines: bool,
     pub input: Box<dyn Read>,
     pub output: Box<dyn Write>,
 }
@@ -106,6 +111,7 @@ impl Opts {
         Ok(Opts {
             pattern: clio.pattern,
             delimiter: clio.delimiter,
+            newlines: !clio.no_newlines,
             max,
             output_mode,
             match_mode,

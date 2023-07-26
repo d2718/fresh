@@ -50,12 +50,16 @@ fn regex_match(mut opts: Opts) -> Result<(), FrErr> {
 
                 match altered {
                     Cow::Owned(mut v) => {
-                        v.extend_from_slice(NEWLINE);
+                        if opts.newlines {
+                            v.extend_from_slice(NEWLINE);
+                        }
                         opts.output.write_all(&v)?;
                     }
                     Cow::Borrowed(b) => {
                         opts.output.write_all(b)?;
-                        opts.output.write_all(NEWLINE)?;
+                        if opts.newlines {
+                            opts.output.write_all(NEWLINE)?;
+                        }
                     }
                 }
             }
@@ -71,7 +75,9 @@ fn regex_match(mut opts: Opts) -> Result<(), FrErr> {
                 }
 
                 if !buff.is_empty() {
-                    buff.extend_from_slice(NEWLINE);
+                    if opts.newlines {
+                        buff.extend_from_slice(NEWLINE);
+                    }
                     opts.output.write_all(&buff)?;
                     buff.clear();
                 }
@@ -116,7 +122,9 @@ fn static_match(mut opts: Opts) -> Result<(), FrErr> {
                 if !subslice.is_empty() {
                     buff.extend_from_slice(subslice)
                 }
-                buff.extend_from_slice(NEWLINE);
+                if opts.newlines {
+                    buff.extend_from_slice(NEWLINE);
+                }
                 opts.output.write_all(&buff)?;
                 buff.clear();
             }
@@ -140,7 +148,9 @@ fn static_match(mut opts: Opts) -> Result<(), FrErr> {
                 }
 
                 if !buff.is_empty() {
-                    buff.extend_from_slice(NEWLINE);
+                    if opts.newlines {
+                        buff.extend_from_slice(NEWLINE);
+                    }
                     opts.output.write_all(&buff)?;
                     buff.clear();
                 }
