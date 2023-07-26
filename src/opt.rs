@@ -11,10 +11,12 @@ use clap::Parser;
 
 use crate::FrErr;
 
-#[derive(Clone, Copy, Debug)]
+static DEFAULT_REGEX_EXTRACT: &str = "$0";
+
+#[derive(Clone, Debug)]
 pub enum OutputMode {
-    Replace,
-    Extract,
+    Replace(String),
+    Extract(String),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -60,7 +62,6 @@ struct CliOpts {
 
 pub struct Opts {
     pub pattern: String,
-    pub replace: Option<String>,
     pub max: usize,
     pub output_mode: OutputMode,
     pub match_mode: MatchMode,
@@ -74,11 +75,19 @@ impl Opts {
         let clio = CliOpts::parse();
 
         let max = clio.max.unwrap_or(usize::MAX);
-        let output_mode = if clio.extract || clio.replace.is_none() {
-            OutputMode::Extract
-        } else {
-            OutputMode::Replace
+
+        let output_mode = match (clio.extract, clio.replace) {
+            (_, None) => {
+                if clio.simple {
+                    OutputMode::Extract(clio.pattern.clone())
+                } else {
+                    OutputMode::Extract(DEFAULT_REGEX_EXTRACT.into())
+                }
+            }
+            (true, Some(repl)) => OutputMode::Extract(repl),
+            (false, Some(repl)) => OutputMode::Replace(repl),
         };
+
         let match_mode = if clio.simple {
             MatchMode::Verbatim
         } else {
@@ -97,9 +106,11 @@ impl Opts {
         Ok(Opts {
             pattern: clio.pattern,
             delimiter: clio.delimiter,
-            replace: clio.replace,
-            max, output_mode, match_mode,
-            input, output,
+            max,
+            output_mode,
+            match_mode,
+            input,
+            output,
         })
     }
 }
