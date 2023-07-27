@@ -84,8 +84,6 @@ impl Opts {
     pub fn new() -> Result<Self, FrErr> {
         let clio = CliOpts::parse();
 
-        println!("{:#?}", &clio);
-
         let max = clio.max.unwrap_or(usize::MAX);
 
         let output_mode = match (clio.extract, clio.replace) {
@@ -122,8 +120,6 @@ impl Opts {
             // If the argument is present and has a value, use that.
             Some(Some(s)) => Some(Vec::from(s)),
         };
-
-        println!("{:?}", &newline);
 
         Ok(Opts {
             pattern: clio.pattern,
